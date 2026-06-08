@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Взломщик замков — Gothic 1 Remake</title>
+<style>
+  :root{
+    --bg:#1a1611; --panel:#2a241b; --panel2:#332c20; --line:#473d2c;
+    --gold:#c8a85a; --gold2:#e6c878; --txt:#e8ddc4; --dim:#9a8f76;
+    --green:#5fae5f; --red:#d05b4f; --blue:#5b8bd0;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--txt);
+    font-family:"Segoe UI",system-ui,sans-serif; font-size:15px; line-height:1.4;
+    padding:24px;
+  }
+  h1{font-size:22px; color:var(--gold2); margin:0 0 4px; letter-spacing:.5px}
+  .sub{color:var(--dim); margin:0 0 20px; font-size:13px}
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:16px 18px; margin-bottom:18px; max-width:760px;
+  }
+  .panel h2{font-size:16px; color:var(--gold); margin:0 0 4px}
+  .hint{color:var(--dim); font-size:12.5px; margin:0 0 12px}
+  table{border-collapse:collapse}
+  td,th{text-align:center; padding:0}
+  th{color:var(--dim); font-weight:600; font-size:12px; padding:4px 6px}
+  .rowlbl{color:var(--gold); font-weight:600; padding-right:10px; text-align:right; white-space:nowrap}
+  /* connection cells */
+  .cell{
+    width:38px; height:34px; margin:3px; border:1px solid var(--line);
+    border-radius:6px; background:var(--panel2); cursor:pointer; font-size:16px;
+    color:var(--txt); transition:.08s;
+  }
+  .cell:hover{border-color:var(--gold)}
+  .cell.self{outline:1px dashed var(--dim)}
+  .cell.pos{color:var(--green); border-color:var(--green); background:#243524}
+  .cell.neg{color:var(--blue); border-color:var(--blue); background:#222b3a}
+  /* position grid */
+  .pcell{
+    width:40px; height:40px; margin:3px; border:1px solid var(--line);
+    border-radius:50%; background:var(--panel2); cursor:pointer; transition:.08s;
+    position:relative;
+  }
+  .pcell:hover{border-color:var(--gold)}
+  .pcell.target{box-shadow:inset 0 0 0 2px #5a4a20}
+  .pcell.peg{background:var(--gold); border-color:var(--gold2)}
+  .pcell.peg.target{background:var(--green); border-color:#9fe09f}
+  .pcell.peg.edge{background:var(--red); border-color:#e88}
+  button{
+    background:var(--panel2); color:var(--txt); border:1px solid var(--line);
+    border-radius:7px; padding:8px 14px; font-size:14px; cursor:pointer; margin:4px 6px 4px 0;
+  }
+  button:hover{border-color:var(--gold); color:var(--gold2)}
+  button.primary{background:var(--gold); color:#241d10; border-color:var(--gold2); font-weight:700}
+  button.primary:hover{background:var(--gold2); color:#241d10}
+  input[type=text]{
+    background:var(--panel2); color:var(--txt); border:1px solid var(--line);
+    border-radius:7px; padding:8px 10px; font-size:14px; width:160px; font-family:monospace;
+  }
+  .legend{font-size:12px; color:var(--dim); margin-top:8px}
+  .legend b{color:var(--green)} .legend i{color:var(--blue); font-style:normal}
+  #result{margin-top:6px}
+  .status{padding:10px 12px; border-radius:8px; font-size:14px; margin:8px 0}
+  .status.ok{background:#243524; color:#bfe6bf; border:1px solid var(--green)}
+  .status.err{background:#3a2422; color:#eebcb6; border:1px solid var(--red)}
+  ol.path{margin:10px 0 0; padding-left:22px}
+  ol.path li{padding:3px 0}
+  ol.path li.left{color:var(--gold2)} ol.path li.right{color:var(--blue)}
+  .player{margin-top:14px; padding-top:12px; border-top:1px solid var(--line)}
+  .player .step{color:var(--gold); font-weight:600; margin:0 10px}
+  .small{font-size:12px; color:var(--dim)}
+  .flex{display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start}
+</style>
+</head>
+<body>
+<h1>🗝️ Взломщик замков — Gothic 1 Remake</h1>
+<p class="sub">6 плит × 7 отверстий. Цель — загнать каждый столбик в позицию 4 (центр). Кратчайший путь считается через BFS.</p>
+
+<!-- ============ СЕКЦИЯ 1: СВЯЗИ ============ -->
+<div class="panel">
+  <h2>1 · Связи плит (калибровка)</h2>
+  <p class="hint">
+    Для каждой плиты задай, что происходит при движении этой <b>плиты влево</b>
+    (помни: плита влево → её столбик едет <span style="color:var(--green)">вправо</span>).
+    Движение вправо вычисляется автоматически как зеркало. Клик по ячейке циклит:
+    <span style="color:var(--dim)">·</span> →
+    <span style="color:var(--green)">→ (+1)</span> →
+    <span style="color:var(--blue)">← (−1)</span>.
+  </p>
+  <table id="connTable"></table>
+  <div class="legend">
+    Столбец — какая плита сдвигается. <b>→</b> столбик едет вправо (+1), <i>←</i> влево (−1).
+    Ячейка с пунктиром — сама управляемая плита.
+  </div>
+  <div style="margin-top:12px">
+    <button onclick="resetConns()">Сброс связей</button>
+    <button onclick="saveConns()">Сохранить</button>
+    <button onclick="loadConns()">Загрузить</button>
+  </div>
+</div>
+
+<!-- ============ СЕКЦИЯ 2: ПОЗИЦИИ ============ -->
+<div class="panel">
+  <h2>2 · Начальные позиции столбиков</h2>
+  <p class="hint">Кликни в каждой строке отверстие, где сейчас стоит столбик. Колонка 4 — цель (подсвечена).</p>
+  <div class="flex">
+    <table id="posGrid"></table>
+    <div>
+      <div class="small" style="margin-bottom:6px">Быстрый ввод (6 чисел 1–7):</div>
+      <input type="text" id="quickPos" placeholder="напр. 3 5 1 7 2 4">
+      <button onclick="applyQuick()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ СЕКЦИЯ 3: РЕШЕНИЕ ============ -->
+<div class="panel">
+  <h2>3 · Решение</h2>
+  <button class="primary" onclick="solve()">🔓 Найти кратчайший путь</button>
+  <div id="result"></div>
+</div>
+
+<script>
+const N = 6;      // плит
+const HOLES = 7;  // отверстий (позиции 1..7)
+const TARGET = 4; // целевая позиция
+
+// conns[i] = эффект-вектор движения "плита i влево" (длина 6, значения -1/0/+1)
+let conns = [];
+// pos[i] = текущая позиция столбика плиты i (1..7), 0 = не задано
+let pos = new Array(N).fill(0);
+
+// ---------- инициализация связей: по умолчанию каждая плита двигает только себя (+1) ----------
+function defaultConns(){
+  conns = [];
+  for(let i=0;i<N;i++){
+    const v = new Array(N).fill(0);
+    v[i] = 1; // плита i влево → её столбик +1 (вправо)
+    conns.push(v);
+  }
+}
+
+// ---------- отрисовка таблицы связей ----------
+function renderConns(){
+  const t = document.getElementById('connTable');
+  let html = '<tr><th></th>';
+  for(let j=0;j<N;j++) html += `<th>П${j+1}</th>`;
+  html += '</tr>';
+  for(let i=0;i<N;i++){
+    html += `<tr><td class="rowlbl">Плита ${i+1} ←</td>`;
+    for(let j=0;j<N;j++){
+      const val = conns[i][j];
+      const cls = val>0 ? 'pos' : (val<0 ? 'neg' : '');
+      const self = i===j ? ' self' : '';
+      const sym = val>0 ? '→' : (val<0 ? '←' : '·');
+      html += `<td><button class="cell ${cls}${self}" onclick="cycleConn(${i},${j})">${sym}</button></td>`;
+    }
+    html += '</tr>';
+  }
+  t.innerHTML = html;
+}
+function cycleConn(i,j){
+  // цикл 0 -> +1 -> -1 -> 0
+  let v = conns[i][j];
+  v = v===0 ? 1 : (v===1 ? -1 : 0);
+  conns[i][j] = v;
+  renderConns();
+}
+function resetConns(){ defaultConns(); renderConns(); }
+function saveConns(){
+  localStorage.setItem('gothic_conns', JSON.stringify(conns));
+  flash('Связи сохранены', true);
+}
+function loadConns(){
+  const s = localStorage.getItem('gothic_conns');
+  if(!s){ flash('Сохранённых связей нет', false); return; }
+  try{ conns = JSON.parse(s); renderConns(); flash('Связи загружены', true); }
+  catch(e){ flash('Ошибка чтения сохранения', false); }
+}
+
+// ---------- отрисовка сетки позиций ----------
+function renderPos(){
+  const t = document.getElementById('posGrid');
+  let html = '<tr><th></th>';
+  for(let h=1;h<=HOLES;h++) html += `<th>${h}</th>`;
+  html += '</tr>';
+  for(let i=0;i<N;i++){
+    html += `<tr><td class="rowlbl">Плита ${i+1}</td>`;
+    for(let h=1;h<=HOLES;h++){
+      let cls = 'pcell';
+      if(h===TARGET) cls += ' target';
+      if(pos[i]===h){
+        cls += ' peg';
+        if(h===HOLES || h===1) cls += ' edge';
+      }
+      html += `<td><div class="${cls}" onclick="setPos(${i},${h})"></div></td>`;
+    }
+    html += '</tr>';
+  }
+  t.innerHTML = html;
+}
+function setPos(i,h){ pos[i] = (pos[i]===h ? 0 : h); renderPos(); }
+function applyQuick(){
+  const raw = document.getElementById('quickPos').value.trim();
+  const nums = raw.split(/[\s,]+/).map(Number).filter(n=>!isNaN(n));
+  if(nums.length!==N){ flash(`Нужно ровно ${N} чисел`, false); return; }
+  for(const n of nums){ if(n<1||n>HOLES){ flash('Числа должны быть 1..7', false); return; } }
+  pos = nums.slice(); renderPos(); flash('Позиции применены', true);
+}
+
+// ---------- список действий: 12 штук (6 влево + 6 вправо=инверсия) ----------
+function buildActions(){
+  const acts = [];
+  for(let i=0;i<N;i++){
+    if(conns[i].some(v=>v!==0)){
+      acts.push({ label:`Плита ${i+1} → Влево`,  dir:'left',  vec:conns[i] });
+      acts.push({ label:`Плита ${i+1} → Вправо`, dir:'right', vec:conns[i].map(v=>-v) });
+    }
+  }
+  return acts;
+}
+
+// ---------- BFS ----------
+function solve(){
+  const res = document.getElementById('result');
+  // валидация позиций
+  if(pos.some(p=>p===0)){ res.innerHTML = statusHtml('Задай позиции всех 6 столбиков (секция 2).', false); return; }
+
+  const start = pos.slice();
+  const goal = new Array(N).fill(TARGET);
+  const key = a => a.join(',');
+
+  if(key(start)===key(goal)){ res.innerHTML = statusHtml('Замок уже собран — все столбики в позиции 4. 🎉', true); return; }
+
+  const actions = buildActions();
+  if(actions.length===0){ res.innerHTML = statusHtml('Нет ни одной связи — задай связи в секции 1.', false); return; }
+
+  const prev = new Map();
+  prev.set(key(start), null);
+  const queue = [start];
+  let found = null;
+
+  while(queue.length){
+    const s = queue.shift();
+    for(const a of actions){
+      const ns = new Array(N);
+      let broke = false;
+      for(let i=0;i<N;i++){
+        ns[i] = s[i] + a.vec[i];
+        if(ns[i] < 1 || ns[i] > HOLES){ broke = true; break; } // сломало бы отмычку
+      }
+      if(broke) continue;
+      const k = key(ns);
+      if(prev.has(k)) continue;
+      prev.set(k, { from:s, action:a });
+      if(k===key(goal)){ found = ns; queue.length = 0; break; }
+      queue.push(ns);
+    }
+  }
+
+  if(!found){
+    res.innerHTML = statusHtml('Решения нет — цель недостижима при текущих связях. Проверь матрицу связей в секции 1.', false);
+    return;
+  }
+
+  // восстановление пути
+  const path = [];
+  let cur = key(goal);
+  while(prev.get(cur)){
+    const step = prev.get(cur);
+    path.push(step.action);
+    cur = key(step.from);
+  }
+  path.reverse();
+
+  renderSolution(start, path);
+}
+
+// ---------- вывод решения + пошаговый плеер ----------
+let playerStates = [], playerLabels = [], playerIdx = 0;
+
+function renderSolution(start, path){
+  const res = document.getElementById('result');
+  let html = statusHtml(`Найден кратчайший путь: <b>${path.length}</b> ход(ов).`, true);
+  html += '<ol class="path">';
+  for(const a of path){
+    html += `<li class="${a.dir}">${a.label}</li>`;
+  }
+  html += '</ol>';
+
+  // предрасчёт состояний для плеера
+  playerStates = [start.slice()];
+  playerLabels = ['Старт'];
+  let s = start.slice();
+  for(const a of path){
+    s = s.map((p,i)=>p + a.vec[i]);
+    playerStates.push(s.slice());
+    playerLabels.push(a.label);
+  }
+  playerIdx = 0;
+
+  html += `<div class="player">
+    <button onclick="playerStep(-1)">◀ Назад</button>
+    <span class="step" id="playerStep"></span>
+    <button onclick="playerStep(1)">Вперёд ▶</button>
+    <div style="margin-top:10px"><table id="playerGrid"></table></div>
+  </div>`;
+  res.innerHTML = html;
+  renderPlayer();
+}
+
+function playerStep(d){
+  playerIdx = Math.max(0, Math.min(playerStates.length-1, playerIdx+d));
+  renderPlayer();
+}
+function renderPlayer(){
+  document.getElementById('playerStep').textContent =
+    `Шаг ${playerIdx}/${playerStates.length-1}: ${playerLabels[playerIdx]}`;
+  const st = playerStates[playerIdx];
+  const t = document.getElementById('playerGrid');
+  let html = '<tr><th></th>';
+  for(let h=1;h<=HOLES;h++) html += `<th>${h}</th>`;
+  html += '</tr>';
+  for(let i=0;i<N;i++){
+    html += `<tr><td class="rowlbl">Плита ${i+1}</td>`;
+    for(let h=1;h<=HOLES;h++){
+      let cls='pcell';
+      if(h===TARGET) cls+=' target';
+      if(st[i]===h){ cls+=' peg'; if(st[i]===TARGET) {} }
+      html += `<td><div class="${cls}"></div></td>`;
+    }
+    html += '</tr>';
+  }
+  t.innerHTML = html;
+}
+
+// ---------- утилиты ----------
+function statusHtml(msg, ok){ return `<div class="status ${ok?'ok':'err'}">${msg}</div>`; }
+function flash(msg, ok){
+  const res = document.getElementById('result');
+  res.innerHTML = statusHtml(msg, ok);
+  setTimeout(()=>{ if(res.firstChild && res.firstChild.textContent===msg) res.innerHTML=''; }, 2500);
+}
+
+// ---------- старт ----------
+defaultConns();
+renderConns();
+renderPos();
+</script>
+</body>
+</html>
